@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chaos Link</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,sans-serif;background:#0b1020;color:#f5f7ff;min-height:100vh}
+.wrap{max-width:900px;margin:auto;padding:24px}.card{background:#151c33;border:1px solid #293252;border-radius:24px;padding:28px;box-shadow:0 20px 60px #0005}
+h1{font-size:48px;margin:0 0 8px}.sub{color:#aeb8d6}.row{display:flex;gap:12px;flex-wrap:wrap}input,button{border-radius:14px;padding:14px 16px;font-size:16px}input{background:#0e1428;color:white;border:1px solid #394463;flex:1;min-width:180px}button{border:0;background:#6d7cff;color:white;font-weight:700;cursor:pointer}button.secondary{background:#293252}.hidden{display:none}.players{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:18px 0}.player{padding:12px;border:1px solid #303a5d;border-radius:14px;background:#10162a}.choice{width:100%;margin:8px 0;text-align:left;background:#202946}.choice:hover{background:#33416d}.pill{display:inline-block;padding:7px 10px;border-radius:999px;background:#242e50;margin:4px}.score{font-size:42px;font-weight:800}.mission{padding:16px;border-radius:16px;background:#30265d;margin:18px 0;border:1px solid #624fb0}.chaos{padding:16px;border-radius:16px;background:#5a2938;margin:18px 0}.result{display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid #303a5d}.small{font-size:13px;color:#aeb8d6}
+</style>
+</head>
+<body><div class="wrap"><div id="app" class="card"></div></div>
+<script>
+const socket=io(); let state=null, mission="";
+const app=document.getElementById("app");
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+function render(){
+ if(!state){app.innerHTML=`<h1>CHAOS LINK</h1><p class="sub">Think alike. Bluff smart. Survive the chaos.</p>
+ <div class="row"><input id="name" placeholder="Your name"><button onclick="create()">Create Room</button></div>
+ <hr style="border-color:#293252;margin:24px 0"><div class="row"><input id="code" placeholder="Room code"><button class="secondary" onclick="join()">Join Room</button></div>`;return}
+ const me=state.players.find(p=>p.id===socket.id);
+ if(state.status==="lobby"){app.innerHTML=`<h1>Room ${state.code}</h1><p class="sub">Waiting for 2–8 players</p>
+ <div class="players">${state.players.map(p=>`<div class="player"><b>${esc(p.name)}</b><div class="small">${p.ready?"✓ Ready":"Not ready"}</div></div>`).join("")}</div>
+ <button onclick="ready()">${me&&me.ready?"Cancel Ready":"I'm Ready"}</button><p class="small">Everyone must be ready. The game starts automatically.</p>`;return}
+ if(state.status==="answering"){app.innerHTML=`<div class="small">ROUND ${state.round}/${state.totalRounds}</div><h2>${esc(state.prompt.text)}</h2>
+ <div class="mission"><b>🕵️ SECRET MISSION</b><br>${esc(mission||"Your mission is hidden here.")}</div>
+ <div class="chaos"><b>🌪️ CHAOS: ${esc(state.chaos.name)}</b><br>${esc(state.chaos.text)}</div>
+ <div>${state.prompt.options.map((x,i)=>`<button class="choice" onclick="answer(${i})">${esc(x)}</button>`).join("")}</div>
+ <p class="small">${state.players.filter(p=>p.answer!==undefined).length} players connected. Answers are hidden until everyone locks in.</p>`;return}
+ if(state.status==="reveal"){const r=state.reveal;app.innerHTML=`<div class="small">ROUND ${state.round} RESULTS</div><h2>Reveal!</h2>
+ ${r.results.map(x=>`<div class="result"><span><b>${esc(x.name)}</b> — ${esc(state.prompt.options[x.answer])}<br><span class="small">${x.predictions} prediction matches • ${x.mission?"Mission complete":"Mission missed"}</span></span><b>+${x.gained}</b></div>`).join("")}
+ <h3>Leaderboard</h3>${r.leaderboard.map((x,i)=>`<div class="result"><span>${i+1}. ${esc(x.name)}</span><b>${x.score}</b></div>`).join("")}
+ <button onclick="next()">${state.round>=state.totalRounds?"See Final Results":"Next Round"}</button>`;return}
+ if(state.status==="finished"){const board=state.players.slice().sort((a,b)=>b.score-a.score);app.innerHTML=`<h1>🏆 CHAOS LINK</h1><h2>Final Results</h2>
+ <div class="score">${board[0]?.score||0}</div><p class="sub">${esc(board[0]?.name||"Winner")} wins!</p>
+ ${board.map((x,i)=>`<div class="result"><span>${i+1}. ${esc(x.name)}</span><b>${x.score}</b></div>`).join("")}
+ <button onclick="location.reload()">Play Again</button>`}
+}
+function create(){socket.emit("createRoom",{name:document.getElementById("name").value})}
+function join(){socket.emit("joinRoom",{roomCode:document.getElementById("code").value,name:document.getElementById("name").value})}
+function ready(){socket.emit("ready")}
+function answer(i){socket.emit("answer",{answer:i})}
+function next(){socket.emit("nextRound")}
+socket.on("roomCreated",c=>{history.replaceState({},'',"?room="+c)})
+socket.on("mission",m=>{mission=m.text;render()})
+socket.on("state",s=>{state=s;render()})
+socket.on("errorMessage",m=>alert(m))
+render();
+</script></body></html>
